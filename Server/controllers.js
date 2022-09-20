@@ -12,38 +12,38 @@ const pool = new Pool({
 });
 
 module.exports = {
-  getReviews: (req, res) => (async () => {
-    const { rows } = await pool.query(`
-    SELECT
-      product_id AS product,
+  getReviews: (req, res) => {
+    pool.query(`
+    SELECT json_build_object(
+      'product', ${req.params.product_id},
+      'results',
       (SELECT json_agg(json_build_object(
-          'review_id', review_id,
-          'rating', rating,
-          'summary', summary,
-          'recommend', recommend,
-          'response', response,
-          'body', body,
-          'date', date,
-          'reviewer_name', reviewer_name,
-          'helpfulness', helpfulness,
-          'photos',
-          (SELECT json_agg(json_build_object(
-            'id', photos.photo_id,
-            'url', photos.url))
+        'review_id', review_id,
+        'rating', rating,
+        'summary', summary,
+        'recommend', recommend,
+        'response', response,
+        'body', body,
+        'date', date,
+        'reviewer_name', reviewer_name,
+        'helpfulness', helpfulness,
+        'photos',
+        (SELECT json_agg(json_build_object(
+          'id', photos.photo_id,
+          'url', photos.url))
           FROM photos
           WHERE photos.review_id = reviews.review_id)
       ))
       FROM reviews
-        WHERE product_id = ${req.params.product_id}
-          ) AS results
-    FROM reviews WHERE reviews.product_id = ${req.params.product_id}
-    `);
-    res.status(200).send(rows);
-  })()
-    .catch((err) => console.error(err)),
+      WHERE product_id = ${req.params.product_id}
+      )
+    )
+    `)
+      .then((query) => res.status(200).send(query.rows[0].json_build_object))
+      .catch((err) => res.send(err));
+  },
 
   getMetaData: (req, res) => {
-    console.log('querying database now');
     pool.query(
       `SELECT json_build_object(
         'product_id', ${req.params.product_id},
@@ -86,6 +86,28 @@ module.exports = {
         )
       )`,
     )
-      .then((query) => (res.status(200).send(query.rows[0].json_build_object)));
+      .then((query) => (res.status(200).send(query.rows[0].json_build_object)))
+      .catch((err) => (res.send(err)));
+  },
+
+  addReview: (req, res) => {
+    const date = Date.now();
+    const queryString = 'INSERT INTO reviews (product_id, reviewer_name, reviewer_email, rating, summary, recommend, reported, response, body, date, helpfulness) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)';
+    const params = [
+      req.params.product_id,
+      req.body.reviewer_name,
+      req.body.reviewer_email,
+      req.body.rating,
+      req.body.summary,
+      req.body.recommend,
+      false,
+      req.body.response,
+      req.body.body,
+      date,
+      0,
+    ];
+    pool.query(queryString, params)
+      .then(() => res.status(201).send('CREATED'))
+      .catch((err) => res.send(err));
   },
 };
